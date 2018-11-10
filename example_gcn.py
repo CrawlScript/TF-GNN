@@ -1,8 +1,10 @@
 # coding=utf-8
-from gat.data.dataset import GraphDataset
-from gat.model.module import GCN
-from gat.model.trainer import GCNTrainer
+
 from tensorflow.contrib.eager.python import tfe
+
+from gnn.data.dataset import GraphDataset
+from gnn.model.gcn import GCN, GCNTrainer
+
 tfe.enable_eager_execution()
 
 m10 = GraphDataset("data/M10")
