@@ -3,6 +3,7 @@
 from tensorflow.contrib.eager.python import tfe
 
 from gnn.data.dataset import GraphDataset
+from gnn.data.meta_network import NODE_TYPE_NODE
 from gnn.model.gcn import GCN, GCNTrainer
 
 tfe.enable_eager_execution()
