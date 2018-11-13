@@ -1,9 +1,12 @@
 # coding=utf-8
 from scipy.sparse import csr_matrix
 import numpy as np
+import random
+from multiprocessing.dummy import Pool as ThreadPool
 
-NODE_TYPE_NODE = "N_NODE"
-NODE_TYPE_LABEL = "N_LABEL"
+# N_TYPE denotes node type
+N_TYPE_NODE = "N_NODE"
+N_TYPE_LABEL = "N_LABEL"
 
 
 def dict_get_or_create_value(dict_object, key, default_value):
@@ -25,8 +28,10 @@ class MetaNetwork(object):
         self.node_type_id_index_dict = {}
         # node_type:str => node_index:int => node_id:str
         self.node_type_index_id_dict = {}
-        # ndoe_type:str => node_index:int => node_attrdict: dict
+        # node_type:str => node_index:int => node_attrdict: dict
         self.node_type_index_attrdict_dict = {}
+        # node_type0:str => node_type1:str => node_index:int => neighbor_node_indices:list
+        self.meta_neighbors_dict = {}
         # key0: node_type0 => key1: node_type1 => key2: node_index0 => key3 => node_index1 => value: weight
         self.meta_adj_dict = {}
 
@@ -37,6 +42,23 @@ class MetaNetwork(object):
 
     def get_adj_dict(self, node_type0, node_type1):
         return self.meta_adj_dict[node_type0][node_type1]
+
+    # neighbor_weight_dict
+    def get_weight_dict(self, node_type0, node_type1, node_index):
+        return self.get_adj_dict(node_type0, node_type1)[node_index]
+
+    def get_or_create_neighbors_dict(self, node_type0, node_type1):
+        sub_meta_neighbors_dict = dict_get_or_create_value(self.meta_neighbors_dict, node_type0, {})
+        neighbors_dict = dict_get_or_create_value(sub_meta_neighbors_dict, node_type1, {})
+        return neighbors_dict
+
+    def get_or_create_neighbors(self, node_type0, node_type1, node_index):
+        neighbors_dict = self.get_or_create_neighbors_dict(node_type0, node_type1)
+        neighbors = dict_get_or_create_value(neighbors_dict, node_index, [])
+        return neighbors
+
+    def get_neighbors(self, node_type0, node_type1, node_index):
+        return self.meta_neighbors_dict[node_type0][node_type1][node_index]
 
     def get_or_create_node_id_index_dict(self, node_type):
         return dict_get_or_create_value(self.node_type_id_index_dict, node_type, {})
@@ -54,6 +76,14 @@ class MetaNetwork(object):
         node_index_attrdict = dict_get_or_create_value(self.node_type_index_attrdict_dict, node_type, {})
         attrdict = dict_get_or_create_value(node_index_attrdict, node_index, {})
         return attrdict
+
+    def get_or_create_node_attr(self, node_type, node_index, attr_name, attr_value):
+        attr_dict = self.get_or_create_node_attrdict(node_type, node_index)
+        if attr_name in attr_dict:
+            return attr_dict[attr_name]
+        else:
+            attr_dict[attr_name] = attr_value
+            return attr_value
 
     def get_node_attrdict(self, node_type, node_index):
         return self.node_type_index_attrdict_dict[node_type][node_index]
@@ -73,6 +103,10 @@ class MetaNetwork(object):
         adj_dict = self.get_or_create_adj_dict(node_type0, node_type1)
         weight_dict = dict_get_or_create_value(adj_dict, node_index0, {})
         weight_dict[node_index1] = weight
+
+        neighbors = self.get_or_create_neighbors(node_type0, node_type1, node_index0)
+        if node_index1 not in neighbors:
+            neighbors.append(node_index1)
 
     def add_edges(self, node_type0, node_type1, node_index0, node_index1, weight=1.0):
         self.add_edge(node_type0, node_type1, node_index0, node_index1, weight=weight)
@@ -104,7 +138,7 @@ class MetaNetwork(object):
         return node_index_id_dict[node_index]
 
     def get_node_ids(self, node_type, node_indices):
-        return [self.get_node_id[node_index] for node_index in node_indices]
+        return [self.get_node_id(node_type, node_index) for node_index in node_indices]
 
     def has_node_id(self, node_type, node_id):
         node_id_index_dict = self.get_node_id_index_dict(node_type)
@@ -152,3 +186,52 @@ class MetaNetwork(object):
         test_masks = np.zeros_like(random_node_indices, dtype=np.int32)
         test_masks[test_node_indices] = 1
         return train_node_indices, test_node_indices, train_masks, test_masks
+
+    def random_node_index(self, node_type, excluded_node_indices=None):
+        while True:
+            random_node_index = random.randint(0, self.num_nodes(node_type) - 1)
+            if excluded_node_indices is not None and random_node_index in excluded_node_indices:
+                continue
+            return random_node_index
+
+    def random_neighbor_node_index(self, node_type0, node_type1, node_index):
+        neighbors = self.get_or_create_neighbors(node_type0, node_type1, node_index)
+        if len(neighbors) == 0:
+            return None
+        i = random.randint(0, len(neighbors) - 1)
+        return neighbors[i]
+
+    def random_walk(self, node_types, start_node_index=None, padding=True):
+        if start_node_index is None:
+            start_node_index = self.random_node_index(node_types[0])
+        path = [start_node_index]
+        for i, node_type in enumerate(node_types[:-1]):
+            node_type0 = node_types[i]
+            node_type1 = node_types[i+1]
+            node_index0 = path[-1]
+            node_index1 = self.random_neighbor_node_index(node_type0, node_type1, node_index0)
+            if node_index1 is None:
+                break
+            path.append(node_index1)
+
+        while len(path) < len(node_types):
+            node_type = node_types[len(path)]
+            random_node_index = self.random_node_index(node_type, excluded_node_indices=path)
+            path.append(random_node_index)
+        return path
+
+    def multi_random_walk(self, node_types, start_node_indices=None, num_paths=None, num_threads=None):
+        if (start_node_indices is None) == (num_paths is None):
+            print("please specify either 'start_node_indices' or 'num_paths'")
+        if start_node_indices is None:
+            start_node_indices = [None] * num_paths
+        if num_threads is None:
+            num_paths = num_paths
+
+        def random_walk_func(start_node_index):
+            return self.random_walk(node_types, start_node_index)
+
+        pool = ThreadPool(4)
+        paths = pool.map(random_walk_func, start_node_indices)
+
+        return paths
