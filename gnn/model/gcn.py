@@ -5,7 +5,7 @@ import tensorflow as tf
 import scipy.sparse as sp
 from scipy.sparse.base import spmatrix
 
-from gnn.util.evaluation import evaluate_accuracy
+from gnn.util.evaluation import evaluate
 
 
 class GCNLayer(tf.keras.layers.Layer):
@@ -140,5 +140,5 @@ class GCNTrainer(object):
             if step % eval_interval == 0:
                 preds = self.model([A, x])
                 preds = tf.argmax(preds, axis=-1).numpy()
-                accuracy = evaluate_accuracy(preds, labels, test_masks)
-                print("step = {}\taccuracy = {}".format(step, accuracy))
+                accuracy, macro_f1, micro_f1 = evaluate(preds, labels, test_masks)
+                print("step = {}\taccuracy = {}\tmacro_f1 = {}\tmicro_f1 = {}".format(step, accuracy, macro_f1, micro_f1))

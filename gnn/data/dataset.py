@@ -77,7 +77,7 @@ class GraphDataset(MetaNetwork):
 
         self.data_dir = data_dir
         self.data_format = data_format
-        self.ignore_featureless_node = True
+        self.ignore_featureless_node = ignore_featureless_node
 
         if tokenizer is None:
             self.tokenizer = EnglishWordTokenizer()

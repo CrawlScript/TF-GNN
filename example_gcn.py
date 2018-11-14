@@ -18,6 +18,6 @@ train_node_indices, test_node_indices, train_masks, test_masks = dataset.split_t
 
 gcn_model = GCN([100, dataset.num_classes()])
 gcn_trainer = GCNTrainer(gcn_model)
-gcn_trainer.train(adj, feature_matrix, labels, train_masks, learning_rate=1e-3, l2_coe=1e-4)
+gcn_trainer.train(adj, feature_matrix, labels, train_masks, learning_rate=1e-3, l2_coe=1e-3)
 
 
