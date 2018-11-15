@@ -91,6 +91,13 @@ class MetaNetwork(object):
     def get_node_attr(self, node_type, node_index, attr_name):
         return self.get_node_attrdict(node_type, node_index)[attr_name]
 
+    def has_node_attr(self, node_type, node_index, attr_name):
+        node_index_attrdict_dict = self.node_type_index_attrdict_dict[node_type]
+        if node_index not in node_index_attrdict_dict:
+            return False
+        attrdict = node_index_attrdict_dict[node_index]
+        return attr_name in attrdict
+
     def get_node_attrs(self, node_type, node_indices, attr_name):
         return [self.get_node_attr(node_type, node_index, attr_name) for node_index in node_indices]
 
@@ -175,15 +182,24 @@ class MetaNetwork(object):
             #         adj[node_index0, node_index1] = weight_dict[node_index1]
             # return adj
 
-    def split_train_and_test(self, node_type, training_rate):
+    def split_train_and_test(self, node_type, training_rate, func_should_mask=None):
+        masked_node_indices = []
         num_nodes = self.num_nodes(node_type)
-        random_node_indices = np.random.permutation(num_nodes)
-        training_size = int(num_nodes * training_rate)
+        if func_should_mask is not None:
+            for node_index in range(num_nodes):
+                if func_should_mask(node_index):
+                    masked_node_indices.append(node_index)
+            random_node_indices = np.random.permutation(masked_node_indices)
+        else:
+            random_node_indices = np.random.permutation(num_nodes)
+
+        training_size = int(len(random_node_indices) * training_rate)
         train_node_indices = random_node_indices[:training_size]
         test_node_indices = random_node_indices[training_size:]
-        train_masks = np.zeros_like(random_node_indices, dtype=np.int32)
+
+        train_masks = np.zeros([num_nodes], dtype=np.int32)
         train_masks[train_node_indices] = 1
-        test_masks = np.zeros_like(random_node_indices, dtype=np.int32)
+        test_masks = np.zeros([num_nodes], dtype=np.int32)
         test_masks[test_node_indices] = 1
         return train_node_indices, test_node_indices, train_masks, test_masks
 

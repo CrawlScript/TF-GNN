@@ -21,7 +21,7 @@ class GCNLayer(tf.keras.layers.Layer):
     def build(self, input_shape):
         super().build(input_shape)
         input_dim = int(input_shape[1][1])
-        self.W = self.add_weight("W", shape=[input_dim, self.num_units], initializer=tf.glorot_uniform_initializer)
+        self.W = self.add_weight("W", shape=[input_dim, self.num_units],initializer=tf.glorot_uniform_initializer)
         self.b = self.add_weight("b", shape=[self.num_units], initializer=tf.zeros_initializer)
 
     def l2_loss(self):
@@ -97,10 +97,11 @@ class GCNTrainer(object):
               feature_matrix,
               labels,
               train_masks,
-              test_masks=None,
+              test_masks,
               steps=1000,
               learning_rate=1e-3,
               l2_coe=1e-3,
+              drop_rate=1e-3,
               show_interval=20,
               eval_interval=20):
 
@@ -112,16 +113,20 @@ class GCNTrainer(object):
         one_hot_labels = tf.one_hot(labels, num_classes)
         optimizer = tf.train.AdamOptimizer(learning_rate)
 
+        if feature_matrix is None:
+            feature_matrix = sp.diags(range(adj.shape[0]))
+
         if isinstance(feature_matrix, spmatrix):
             coo_feature_matrix = feature_matrix.tocoo().astype(np.float32)
             x = tf.SparseTensor(indices=np.stack((coo_feature_matrix.row, coo_feature_matrix.col), axis=1),
                                 values=coo_feature_matrix.data, dense_shape=coo_feature_matrix.shape)
         else:
             x = tf.get_variable("x", initializer=feature_matrix, trainable=False)
+
         num_masked = tf.cast(tf.reduce_sum(train_masks), tf.float32)
         for step in range(steps):
             with tf.GradientTape() as tape:
-                logits = self.model([A, x], drop_rate=0.1)
+                logits = self.model([A, x], drop_rate=drop_rate)
                 losses = tf.nn.softmax_cross_entropy_with_logits(
                     logits=logits,
                     labels=one_hot_labels
