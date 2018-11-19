@@ -109,11 +109,12 @@ class MetaNetwork(object):
     def add_edge(self, node_type0, node_type1, node_index0, node_index1, weight=1.0):
         adj_dict = self.get_or_create_adj_dict(node_type0, node_type1)
         weight_dict = dict_get_or_create_value(adj_dict, node_index0, {})
-        weight_dict[node_index1] = weight
 
-        neighbors = self.get_or_create_neighbors(node_type0, node_type1, node_index0)
-        if node_index1 not in neighbors:
+        if node_index1 not in weight_dict:
+            neighbors = self.get_or_create_neighbors(node_type0, node_type1, node_index0)
             neighbors.append(node_index1)
+
+        weight_dict[node_index1] = weight
 
     def add_edges(self, node_type0, node_type1, node_index0, node_index1, weight=1.0):
         self.add_edge(node_type0, node_type1, node_index0, node_index1, weight=weight)
