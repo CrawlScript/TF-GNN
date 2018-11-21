@@ -34,6 +34,14 @@ class MetaNetwork(object):
         self.meta_neighbors_dict = {}
         # key0: node_type0 => key1: node_type1 => key2: node_index0 => key3 => node_index1 => value: weight
         self.meta_adj_dict = {}
+        # key0: node_type0 => key1: node_type1 => sample_list: list[int]
+        self.meta_sample_list_dict = {}
+
+    def list_node_ids(self, node_type):
+        return list(self.node_type_id_index_dict[node_type].keys())
+
+    def list_node_indices(self, node_type):
+        return list(self.node_type_index_id_dict[node_type].keys())
 
     def get_or_create_adj_dict(self, node_type0, node_type1):
         sub_meta_adj_dict = dict_get_or_create_value(self.meta_adj_dict, node_type0, {})
@@ -139,7 +147,7 @@ class MetaNetwork(object):
         return node_id_index_dict[node_id]
 
     def get_node_indices(self, node_type, node_ids):
-        return [self.get_node_index(node_id) for node_id in node_ids]
+        return [self.get_node_index(node_type, node_id) for node_id in node_ids]
 
     def get_node_id(self, node_type, node_index):
         node_index_id_dict = self.get_node_index_id_dict(node_type)
@@ -252,3 +260,38 @@ class MetaNetwork(object):
         paths = pool.map(random_walk_func, start_node_indices)
 
         return paths
+
+    def build_sample_list(self):
+        for node_type0 in self.meta_adj_dict:
+            sub_meta_sample_list_dict = {}
+            self.meta_sample_list_dict[node_type0] = sub_meta_sample_list_dict
+            for node_type1 in self.meta_adj_dict[node_type0]:
+                sub_meta_sample_list_dict[node_type1] = list(self.meta_adj_dict[node_type0][node_type1].keys())
+
+    def sample_node(self, node_type):
+        num_nodes = self.num_nodes(node_type)
+        return random.randint(0, num_nodes - 1)
+
+    def meta_sample_node(self, node_type0, node_type1):
+        sample_list = self.meta_sample_list_dict[node_type0][node_type1]
+        return sample_list[random.randint(0, len(sample_list) - 1)]
+
+    def sample_triple(self, node_type0, node_type1, node_a=None):
+        if node_a is None:
+            node_a = self.meta_sample_node(node_type0, node_type1)
+        neighbors = self.get_neighbors(node_type0, node_type1, node_a)
+        node_b = neighbors[random.randint(0, len(neighbors)) - 1]
+        while True:
+            node_neg = self.sample_node(node_type1)
+            if node_neg in neighbors or node_neg == node_a:
+                continue
+            else:
+                break
+        return node_a, node_b, node_neg
+
+    def sample_triples(self, node_type0, node_type1, num):
+        samples = []
+        for i in range(num):
+            samples.append(self.sample_triple(node_type0, node_type1))
+        return [list(t) for t in list(zip(*samples))]
+
