@@ -91,6 +91,7 @@ class GraphDataset(object):
         self._read_docs()
         self._read_labels()
         self._read_structure()
+        self.network.build_cache()
 
     def _read_structure(self):
         if self.data_format == GraphDataset.FORMAT_ADJEDGES:
@@ -106,13 +107,13 @@ class GraphDataset(object):
                 node_id0 = node_ids[0]
                 if self.ignore_featureless_node and not self.network.has_node_id(N_TYPE_NODE, node_id0):
                     continue
-                node_index0 = self.network.get_or_create_node_index(N_TYPE_NODE, node_id0)
+                node_index0 = self.network.get_node_index(N_TYPE_NODE, node_id0, create=True)
                 for node_id1 in node_ids[1:]:
                     if self.ignore_featureless_node and not self.network.has_node_id(N_TYPE_NODE, node_id1):
                         continue
-                    node_index1 = self.network.get_or_create_node_index(N_TYPE_NODE, node_id1)
+                    node_index1 = self.network.get_node_index(N_TYPE_NODE, node_id1, create=True)
                     if node_index0 != node_index1:
-                        self.network.add_edges(N_TYPE_NODE, N_TYPE_NODE, node_index0, node_index1, 1.0)
+                        self.network.add_edges((N_TYPE_NODE, N_TYPE_NODE), node_index0, node_index1, 1.0)
 
     def _read_edgelist(self):
         edgelist_fpath = os.path.join(self.data_dir, "edgelist.txt")
@@ -127,19 +128,19 @@ class GraphDataset(object):
                     weight = 1.0
                 if self.ignore_featureless_node and not self.network.has_node_id(N_TYPE_NODE, node_id0):
                     continue
-                node_index0 = self.network.get_or_create_node_index(N_TYPE_NODE, node_id0)
+                node_index0 = self.network.get_node_index(N_TYPE_NODE, node_id0, create=True)
                 if self.ignore_featureless_node and not self.network.has_node_id(N_TYPE_NODE, node_id1):
                     continue
-                node_index1 = self.network.get_or_create_node_index(N_TYPE_NODE, node_id1)
+                node_index1 = self.network.get_node_index(N_TYPE_NODE, node_id1, create=True)
                 if node_index0 != node_index1:
-                    self.network.add_edges(N_TYPE_NODE, N_TYPE_NODE, node_index0, node_index1, weight)
+                    self.network.add_edges((N_TYPE_NODE, N_TYPE_NODE), node_index0, node_index1, weight)
 
     def _read_docs(self):
         docs_fpath = os.path.join(self.data_dir, "docs.txt")
         with open(docs_fpath, "r", encoding="utf-8") as f:
             for line in f:
                 node_id, sentence = re.split(r"\s+", line, 1)
-                node_index = self.network.get_or_create_node_index(N_TYPE_NODE, node_id)
+                node_index = self.network.get_node_index(N_TYPE_NODE, node_id, create=True)
                 token_indices = self.tokenizer.tokenize_to_indices(sentence)
                 self.network.set_node_attr(N_TYPE_NODE, node_index, "features", token_indices)
                 self.num_nodes_with_features += 1
@@ -152,8 +153,8 @@ class GraphDataset(object):
                 if self.ignore_featureless_node:
                     node_index = self.network.get_node_index(N_TYPE_NODE, node_id)
                 else:
-                    node_index = self.network.get_or_create_node_index(N_TYPE_NODE, node_id)
-                label_index = self.network.get_or_create_node_index(N_TYPE_LABEL, label_id)
+                    node_index = self.network.get_node_index(N_TYPE_NODE, node_id, create=True)
+                label_index = self.network.get_node_index(N_TYPE_LABEL, label_id, create=True)
                 self.network.set_node_attr(N_TYPE_NODE, node_index, "label", label_index)
 
     def feature_matrix(self, bag_of_words=False, sparse=True):
@@ -216,7 +217,7 @@ class GraphDataset(object):
             return np.array(label_indices), np.array(label_masks)
 
     def adj_matrix(self, sparse=False):
-        return self.network.adj_matrix(N_TYPE_NODE, N_TYPE_NODE, sparse)
+        return self.network.adj_matrix((N_TYPE_NODE, N_TYPE_NODE), sparse)
 
     def get_label_index(self, node_index):
         return self.network.get_node_attr(N_TYPE_NODE, node_index, "label")
