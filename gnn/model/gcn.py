@@ -55,7 +55,7 @@ class GCN(keras.Model):
         self.gcn_funcs = []
 
         for i, num_units in enumerate(num_units_list):
-            activation = tf.nn.relu if i < num_units - 1 else None
+            activation = tf.nn.relu if i < len(num_units_list) - 1 else None
             gcn_func = GCNLayer(num_units, activation)
             setattr(self, "gcn_func{}".format(i), gcn_func)
             self.gcn_funcs.append(gcn_func)
