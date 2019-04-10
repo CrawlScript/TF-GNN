@@ -22,6 +22,6 @@ labels, label_masks = dataset.label_list_or_matrix(one_hot=False)
 
 train_node_indices, test_node_indices, train_masks, test_masks = dataset.split_train_and_test(training_rate=0.3)
 
-gcn_model = GCN([16, dataset.num_classes()])
+gcn_model = GCN([16, dataset.num_classes()], drop_rate=0.1)
 gcn_trainer = GCNTrainer(gcn_model)
 gcn_trainer.train(adj, feature_matrix, labels, train_masks, test_masks, learning_rate=1e-3, l2_coe=1e-3)

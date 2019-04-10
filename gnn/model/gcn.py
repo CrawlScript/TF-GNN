@@ -2,32 +2,29 @@
 
 import numpy as np
 import tensorflow as tf
+from tensorflow.python import keras
 import scipy.sparse as sp
 from scipy.sparse.base import spmatrix
 
 from gnn.util.evaluation import evaluate
 
 
-class GCNLayer(tf.keras.layers.Layer):
-    def __init__(self, num_units, activation=tf.nn.relu,
-                 trainable=True, name=None, dtype=None, **kwargs):
-        super().__init__(trainable, name, dtype, **kwargs)
+class GCNLayer(keras.Model):
 
+    def __init__(self, num_units, activation=tf.nn.relu, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.num_units = num_units
         self.activation = activation
         self.W = None
         self.b = None
 
     def build(self, input_shape):
-        super().build(input_shape)
         input_dim = int(input_shape[1][1])
         self.W = self.add_weight("W", shape=[input_dim, self.num_units],initializer=tf.glorot_uniform_initializer)
         self.b = self.add_weight("b", shape=[self.num_units], initializer=tf.zeros_initializer)
+        super().build(input_shape)
 
-    def l2_loss(self):
-        return tf.nn.l2_loss(self.W)
-
-    def call(self, inputs, **kwargs):
+    def call(self, inputs, training=None, mask=None):
         A, H = inputs
         A_is_sparse = isinstance(A, tf.SparseTensor)
         H_is_sparse = isinstance(H, tf.SparseTensor)
@@ -46,27 +43,34 @@ class GCNLayer(tf.keras.layers.Layer):
             AHW = self.activation(AHW)
         return AHW
 
+    def l2_loss(self):
+        return tf.nn.l2_loss(self.W)
 
-class GCN(tf.keras.Model):
-    def __init__(self, num_units_list, *args, **kwargs):
+
+class GCN(keras.Model):
+    def __init__(self, num_units_list, drop_rate, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.num_units_list = num_units_list
+        self.drop_rate = drop_rate
         self.gcn_funcs = []
+
         for i, num_units in enumerate(num_units_list):
             activation = tf.nn.relu if i < num_units - 1 else None
             gcn_func = GCNLayer(num_units, activation)
             setattr(self, "gcn_func{}".format(i), gcn_func)
             self.gcn_funcs.append(gcn_func)
 
+        self.dropout_layer = keras.layers.Dropout(drop_rate)
+
     def l2_loss(self):
         return tf.add_n([gcn_func.l2_loss() for gcn_func in self.gcn_funcs])
 
-    def call(self, inputs, drop_rate=None, training=None, mask=None):
+    def call(self, inputs, training=None, mask=None):
         A, H = inputs
         for i, gcn_func in enumerate(self.gcn_funcs):
-            H = gcn_func([A, H])
-            if drop_rate is not None and i == len(self.gcn_funcs) - 2:
-                H = tf.layers.dropout(H, rate=drop_rate)
+            H = gcn_func([A, H], training=training)
+            if i < len(self.gcn_funcs) - 1:
+                H = self.dropout_layer(H, training=training)
         return H
 
     @classmethod
@@ -84,7 +88,7 @@ class GCN(tf.keras.Model):
             A = adj.tocoo().astype(np.float32)
             A = tf.SparseTensor(indices=np.stack((A.row, A.col), axis=1), values=A.data, dense_shape=A.shape)
         else:
-            A = tf.get_variable("A", initializer=adj.todense().astype(np.float32), trainable=False)
+            A = tf.Variable(adj.todense().astype(np.float32), trainable=False)
         return A
 
 
@@ -121,12 +125,12 @@ class GCNTrainer(object):
             x = tf.SparseTensor(indices=np.stack((coo_feature_matrix.row, coo_feature_matrix.col), axis=1),
                                 values=coo_feature_matrix.data, dense_shape=coo_feature_matrix.shape)
         else:
-            x = tf.get_variable("x", initializer=feature_matrix, trainable=False)
+            x = tf.Variable(feature_matrix, trainable=False)
 
         num_masked = tf.cast(tf.reduce_sum(train_masks), tf.float32)
         for step in range(steps):
             with tf.GradientTape() as tape:
-                logits = self.model([A, x], drop_rate=drop_rate)
+                logits = self.model([A, x], training=True)
                 losses = tf.nn.softmax_cross_entropy_with_logits(
                     logits=logits,
                     labels=one_hot_labels
