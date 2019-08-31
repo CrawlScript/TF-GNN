@@ -6,7 +6,7 @@ import re
 
 from scipy.sparse import csr_matrix
 
-from gnn.data.meta_network import MetaNetwork, N_TYPE_NODE, N_TYPE_LABEL
+from gnn.data.meta_network import MetaNetwork, N_TYPE_NODE, N_TYPE_LABEL, IdIndexer
 
 
 class Tokenizer(object):
@@ -40,7 +40,7 @@ class Tokenizer(object):
         if create_token_index:
             token_indices = [self.get_or_create_token_index(token_id) for token_id in token_ids]
         else:
-            token_indices = [self.get_token_index(token_id) for token_id in token_ids]
+            token_indices = [self.get_token_index(token_id) for token_id in token_ids if token_id in self.token_id_index_dict]
         return token_indices
 
 
@@ -72,13 +72,18 @@ class GraphDataset(object):
 
     # read data from data_dir
     # if ignore_featureless_node is True, nodes without content or features will be ignored
-    def __init__(self, data_dir, data_format=FORMAT_ADJEDGES, ignore_featureless_node=True, tokenizer=None):
+    def __init__(self, data_dir, data_format=FORMAT_ADJEDGES, ignore_featureless_node=True,
+                 tokenizer=None,
+                 label_indexer=None,
+                 fit_dataset=True):
         super().__init__()
         self.network = MetaNetwork()
-
+        self.label_indexer = IdIndexer() if label_indexer is None else label_indexer
         self.data_dir = data_dir
         self.data_format = data_format
         self.ignore_featureless_node = ignore_featureless_node
+
+        self.fit_dataset = fit_dataset
 
         self.num_nodes_with_features = 0
 
@@ -141,7 +146,7 @@ class GraphDataset(object):
             for line in f:
                 node_id, sentence = re.split(r"\s+", line, 1)
                 node_index = self.network.get_node_index(N_TYPE_NODE, node_id, create=True)
-                token_indices = self.tokenizer.tokenize_to_indices(sentence)
+                token_indices = self.tokenizer.tokenize_to_indices(sentence, create_token_index=self.fit_dataset)
                 self.network.set_node_attr(N_TYPE_NODE, node_index, "features", token_indices)
                 self.num_nodes_with_features += 1
 
@@ -154,7 +159,8 @@ class GraphDataset(object):
                     node_index = self.network.get_node_index(N_TYPE_NODE, node_id)
                 else:
                     node_index = self.network.get_node_index(N_TYPE_NODE, node_id, create=True)
-                label_index = self.network.get_node_index(N_TYPE_LABEL, label_id, create=True)
+                label_index = self.label_indexer.get_index(label_id, create=self.fit_dataset)
+                # label_index = self.network.get_node_index(N_TYPE_LABEL, label_id, create=True)
                 self.network.set_node_attr(N_TYPE_NODE, node_index, "label", label_index)
 
     def feature_matrix(self, bag_of_words=False, sparse=True):
@@ -192,7 +198,7 @@ class GraphDataset(object):
             raise NotImplementedError()
 
     def num_classes(self):
-        return self.network.num_nodes(N_TYPE_LABEL)
+        return len(self.label_indexer)
 
     def num_nodes(self):
         return self.network.num_nodes(N_TYPE_NODE)
